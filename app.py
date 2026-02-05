@@ -42,13 +42,13 @@ BIKE_TYPES = {
     "ebike ride",
 }
 
-GOALS = {
-    "correr": [
-        ("maraton", "Maratón (en ~12 meses)"),
-        ("resistencia", "Mejorar resistencia y bajar pulsaciones"),
-        ("media", "Media maratón"),
-        ("10k", "10K"),
+GOALS = {    "correr": [
+        ("5k", "Carrera 5K"),
+        ("10k", "Carrera 10K"),
+        ("media", "Media maratón 21K"),
+        ("maraton", "Maratón 42K"),
         ("base", "Solo base aeróbica"),
+        ("resistencia", "Mejorar resistencia y bajar pulsaciones"),
     ],
     "bicicleta": [
         ("gran_fondo", "Gran fondo (larga distancia, en ~12 meses)"),
@@ -600,25 +600,66 @@ def build_plan(profile: UserProfile, baseline: Dict[str, float], hrmax: int) -> 
         km_sessions = distribute_week_km(w_km, l_km, profile.days_per_week)
         templates = workout_templates(phase, profile.goal, hrmax, profile.modality)
         week_start = start + timedelta(weeks=w - 1)
+        # Calendario semanal según días seleccionados (1–7)
+        dmap = {}  # dow -> (tipo, km)
+        strength_days = []
 
-        if profile.days_per_week >= 6:
-            dmap = {0: ("easy", km_sessions[0]), 1: ("intervals" if phase in ("Construcción", "Específico") else "progressive", km_sessions[1]),
-                    2: ("easy", km_sessions[2]), 3: ("tempo" if phase != "Base" else "progressive", km_sessions[3]),
-                    4: ("recovery", max(4.0, km_sessions[4])), 5: ("easy", km_sessions[5] if len(km_sessions) > 5 else max(6.0, (w_km - l_km) * 0.2)),
-                    6: ("long", km_sessions[-1])}
+        quality1 = "intervals" if phase in ("Construcción", "Específico") else "progressive"
+        quality2 = "tempo" if phase != "Base" else "progressive"
+
+        dpw = int(profile.days_per_week)
+
+        # Días de entrenamiento (lunes=0 ... domingo=6)
+        if dpw == 7:
+            train_days = [0, 1, 2, 3, 4, 5, 6]
+        elif dpw == 6:
+            train_days = [0, 1, 2, 3, 5, 6]
+        elif dpw == 5:
+            train_days = [0, 1, 3, 5, 6]
+        elif dpw == 4:
+            train_days = [1, 3, 5, 6]
+        elif dpw == 3:
+            train_days = [1, 3, 6]
+        elif dpw == 2:
+            train_days = [3, 6]
+        else:  # 1 día
+            train_days = [6]
+
+        km_sessions = distribute_week_km(w_km, l_km, dpw)
+
+        # Tipos de sesión en el mismo orden que train_days
+        if dpw == 1:
+            types = ["long"]
+        elif dpw == 2:
+            types = ["easy", "long"]
+        elif dpw == 3:
+            types = [quality1, "easy", "long"]
+        elif dpw == 4:
+            types = [quality1, "easy", quality2, "long"]
+        elif dpw == 5:
+            types = ["easy", quality1, quality2, "easy", "long"]
+        elif dpw == 6:
+            types = ["easy", quality1, "easy", quality2, "easy", "long"]
+        else:  # 7
+            types = ["easy", quality1, "easy", quality2, "recovery", "easy", "long"]
+
+        for idx, dow in enumerate(train_days):
+            wtype = types[idx]
+            km = km_sessions[idx] if idx < len(km_sessions) else 0.0
+            dmap[dow] = (wtype, km)
+
+        # Fuerza
+        if dpw >= 5:
             strength_days = [2, 4]
-        elif profile.days_per_week == 5:
-            dmap = {0: ("easy", km_sessions[0]), 1: ("intervals" if phase in ("Construcción", "Específico") else "progressive", km_sessions[1]),
-                    3: ("tempo" if phase != "Base" else "progressive", km_sessions[2]), 5: ("easy", km_sessions[3]), 6: ("long", km_sessions[-1])}
-            strength_days = [2, 4]
-        elif profile.days_per_week == 4:
-            dmap = {1: ("intervals" if phase in ("Construcción", "Específico") else "progressive", km_sessions[0]),
-                    3: ("easy", km_sessions[1]), 5: ("tempo" if phase != "Base" else "progressive", km_sessions[2]), 6: ("long", km_sessions[-1])}
+        elif dpw == 4:
+            strength_days = [0, 2]
+        elif dpw == 3:
+            strength_days = [0, 4]
+        elif dpw == 2:
             strength_days = [0, 2]
         else:
-            dmap = {1: ("intervals" if phase in ("Construcción", "Específico") else "progressive", km_sessions[0]),
-                    3: ("easy", km_sessions[1]), 6: ("long", km_sessions[-1])}
-            strength_days = [0, 4]
+            strength_days = [2]
+
 
         for dow in range(7):
             this_day = week_start + timedelta(days=dow)
@@ -796,7 +837,7 @@ def make_weekly_feedback(target_df: pd.DataFrame, modality: str, hrmax: int) -> 
 # ============================================================
 
 st.set_page_config(page_title="Planificador multi-plataforma", layout="wide")
-st.title("V2. Planificador de entrenamiento (Strava / Garmin / Komoot / adidas / otros)")
+st.title("Planificador de entrenamiento (Strava / Garmin / Komoot / adidas / otros)")
 
 st.info("Sube tus actividades (CSV de Strava, GPX/TCX/FIT o ZIP con varias actividades) y genera un plan anual en Excel.")
 
@@ -832,7 +873,7 @@ with st.sidebar:
         format_func=lambda x: x[1],
     )[0]
 
-    days_per_week = st.slider("Días de entrenamiento por semana", min_value=3, max_value=6, value=5)
+    days_per_week = st.slider("Días de entrenamiento por semana", min_value=1, max_value=7, value=5)
     start_date = st.date_input("Fecha de inicio", value=date.today())
 
 if uploaded is None:
@@ -866,7 +907,7 @@ if target.empty:
 
 # Para baseline
 target["date_only"] = target["start_dt"]
-baseline = weekly_baseline(target.assign(date_only=target["start_dt"])) if not target.empty else {"w_km": 0.0, "long_km": 0.0, "sessions_w": 0.0}
+baseline = weekly_baseline(target.rename(columns={"start_dt": "date_only"})) if not target.empty else {"w_km": 0.0, "long_km": 0.0, "sessions_w": 0.0}
 
 hrmax = estimate_hrmax(int(age))
 

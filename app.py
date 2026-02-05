@@ -866,7 +866,7 @@ if target.empty:
 
 # Para baseline
 target["date_only"] = target["start_dt"]
-baseline = weekly_baseline(target.rename(columns={"start_dt": "date_only"})) if not target.empty else {"w_km": 0.0, "long_km": 0.0, "sessions_w": 0.0}
+baseline = weekly_baseline(target.assign(date_only=target["start_dt"])) if not target.empty else {"w_km": 0.0, "long_km": 0.0, "sessions_w": 0.0}
 
 hrmax = estimate_hrmax(int(age))
 

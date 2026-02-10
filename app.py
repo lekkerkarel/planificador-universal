@@ -837,7 +837,7 @@ def make_weekly_feedback(target_df: pd.DataFrame, modality: str, hrmax: int) -> 
 # ============================================================
 
 st.set_page_config(page_title="Planificador multi-plataforma", layout="wide")
-st.title("Planificador de entrenamiento (Strava / Garmin / Komoot / adidas / otros)")
+st.title("Planificador de entrenamiento (con lectura multi-plataforma)")
 
 st.info("Sube tus actividades (CSV de Strava, GPX/TCX/FIT o ZIP con varias actividades) y genera un plan anual en Excel.")
 
